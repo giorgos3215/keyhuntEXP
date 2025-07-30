@@ -11,6 +11,9 @@ email: albertobsd@gmail.com
 #include <time.h>
 #include <vector>
 #include <inttypes.h>
+#include <unordered_map>
+#include <mutex>
+#include <unordered_map>
 #include "base58/libbase58.h"
 #include "oldbloom/oldbloom.h"
 #include "bloom/bloom.h"
@@ -88,6 +91,37 @@ struct bPload	{
 	uint32_t aux;
 	uint32_t finished;
 };
+
+struct DistinguishedPointInfo {
+    Point start_point;
+    uint64_t distance;
+};
+
+// A hash function for Points to be used in the unordered_map
+struct PointHash {
+    std::size_t operator()(const Point& p) const {
+        // A simple hash function combining the hashes of the x and y coordinates
+        return std::hash<std::string>()(p.x.GetBase16()) ^ std::hash<std::string>()(p.y.GetBase16());
+    }
+};
+
+std::unordered_map<Point, DistinguishedPointInfo, PointHash> distinguished_points;
+std::mutex dp_mutex;
+
+struct DistinguishedPointInfo {
+    Point start_point;
+    uint64_t distance;
+};
+
+// A hash function for Points to be used in the unordered_map
+struct PointHash {
+    std::size_t operator()(const Point& p) const {
+        // A simple hash function combining the hashes of the x and y coordinates
+        return std::hash<std::string>()(p.x.GetBase16()) ^ std::hash<std::string>()(p.y.GetBase16());
+    }
+};
+
+std::unordered_map<Point, DistinguishedPointInfo, PointHash> distinguished_points;
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
 #define PACK( __Declaration__ ) __pragma( pack(push, 1) ) __Declaration__ __pragma( pack(pop))
@@ -6927,6 +6961,36 @@ void calcualteindex(int i,Int *key)	{
 		key->Mult(&BSGS_M3_double);
 		key->Add(&BSGS_M3);
 	}
+}
+
+bool operator==(const Point& a, const Point& b) {
+    return a.x.IsEqual(&b.x) && a.y.IsEqual(&b.y);
+}
+
+Point walk_func(Point &p) {
+    char buffer[65];
+    p.x.Get32Bytes((unsigned char*)buffer);
+    p.y.Get32Bytes((unsigned char*)buffer + 32);
+    char hash[32];
+    sha256((uint8_t*)buffer, 64, (uint8_t*)hash);
+    Int scalar;
+    scalar.Set32Bytes((uint8_t*)hash);
+    return secp->AddDirect(p, secp->ComputePublicKey(&scalar));
+}
+
+Point walk_func(Point &p) {
+    char buffer[65];
+    p.x.Get32Bytes((unsigned char*)buffer);
+    p.y.Get32Bytes((unsigned char*)buffer + 32);
+    char hash[32];
+    sha256((uint8_t*)buffer, 64, (uint8_t*)hash);
+    Int scalar;
+    scalar.Set32Bytes((uint8_t*)hash);
+    return secp->AddDirect(p, secp->ComputePublicKey(&scalar));
+}
+
+bool operator==(const Point& a, const Point& b) {
+    return a.x.IsEqual(&b.x) && a.y.IsEqual(&b.y);
 }
 
 #if defined(_WIN64) && !defined(__CYGWIN__)
