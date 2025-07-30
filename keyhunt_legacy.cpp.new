@@ -1,0 +1,41 @@
+/*
+Develop by Alberto
+email: albertobsd@gmail.com
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <math.h>
+#include <time.h>
+#include <vector>
+#include <inttypes.h>
+#include "base58/libbase58.h"
+#include "oldbloom/oldbloom.h"
+#include "bloom/bloom.h"
+#include "util.h"
+#include "hashing.h"
+
+#include "gmp256k1/GMP256K1.h"
+#include "gmp256k1/Point.h"
+#include "gmp256k1/Int.h"
+#include "gmp256k1/IntGroup.h"
+#include "gmp256k1/Random.h"
+
+
+#if defined(_WIN64) && !defined(__CYGWIN__)
+#include "getopt.h"
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <pthread.h>
+#include <sys/random.h>
+#endif
+
+#ifdef __unix__
+#ifdef __CYGWIN__
+#else
+#include <linux/random.h>
+#endif
+#endif

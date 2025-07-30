@@ -196,6 +196,7 @@ DWORD WINAPI thread_process_bsgs_dance(LPVOID vargp);
 DWORD WINAPI thread_bPload(LPVOID vargp);
 DWORD WINAPI thread_bPload_2blooms(LPVOID vargp);
 DWORD WINAPI thread_pub2rmd(LPVOID vargp);
+DWORD WINAPI thread_pub2rmd_new(LPVOID vargp);
 #else
 void *thread_process_vanity(void *vargp);
 void *thread_process_minikeys(void *vargp);	
@@ -208,6 +209,7 @@ void *thread_process_bsgs_dance(void *vargp);
 void *thread_bPload(void *vargp);
 void *thread_bPload_2blooms(void *vargp);
 void *thread_pub2rmd(void *vargp);
+void *thread_pub2rmd_new(void *vargp);
 #endif
 
 char *pubkeytopubaddress(char *pkey,int length);
@@ -2124,7 +2126,7 @@ int main(int argc, char **argv)	{
 					tid[i] = CreateThread(NULL, 0, thread_process, (void*)tt, 0, &s);
 				break;
 				case MODE_PUB2RMD:
-					tid[i] = CreateThread(NULL, 0, thread_pub2rmd, (void*)tt, 0, &s);
+					tid[i] = CreateThread(NULL, 0, thread_pub2rmd_new, (void*)tt, 0, &s);
 				break;
 				case MODE_MINIKEYS:
 					tid[i] = CreateThread(NULL, 0, thread_process_minikeys, (void*)tt, 0, &s);
@@ -2136,7 +2138,7 @@ int main(int argc, char **argv)	{
 					s = pthread_create(&tid[i],NULL,thread_process,(void *)tt);
 				break;
 				case MODE_PUB2RMD:
-					s = pthread_create(&tid[i],NULL,thread_pub2rmd,(void *)tt);
+					s = pthread_create(&tid[i],NULL,thread_pub2rmd_new,(void *)tt);
 				break;
 				case MODE_MINIKEYS:
 					s = pthread_create(&tid[i],NULL,thread_process_minikeys,(void *)tt);
@@ -6925,4 +6927,72 @@ void calcualteindex(int i,Int *key)	{
 		key->Mult(&BSGS_M3_double);
 		key->Add(&BSGS_M3);
 	}
+}
+
+#if defined(_WIN64) && !defined(__CYGWIN__)
+DWORD WINAPI thread_pub2rmd_new(LPVOID vargp) {
+#else
+void *thread_pub2rmd_new(void *vargp)	{
+#endif
+	struct tothread *tt;
+	Int random_seed;
+	Point current_point;
+	char rmd160_hash[20];
+	int r;
+
+	tt = (struct tothread *)vargp;
+	int thread_number = tt->nt;
+
+	// Each thread starts with a random point
+	random_seed.Rand(256);
+	current_point = secp->ComputePublicKey(&random_seed);
+
+	while(1) { // Main search loop
+		// Walk function: P_next = P_current + G
+		current_point = secp->AddDirect(current_point, secp->G);
+
+		// Hash the current point
+		secp->GetHash160(P2PKH, true, current_point, (uint8_t*)rmd160_hash);
+
+		// Check for target
+		r = bloom_check(&bloom, rmd160_hash, 20);
+		if(r) {
+			r = searchbinary(addressTable, rmd160_hash, N);
+			if(r) {
+#if defined(_WIN64) && !defined(__CYGWIN__)
+				WaitForSingleObject(write_keys, INFINITE);
+#else
+				pthread_mutex_lock(&write_keys);
+#endif
+				char *hex_pub = secp->GetPublicKeyHex(true, current_point);
+				printf("\nHit: Publickey found %s\n", hex_pub);
+				FILE *fd = fopen("KEYFOUNDKEYFOUND.txt","a+");
+				if(fd) {
+					fprintf(fd,"Publickey found %s\n", hex_pub);
+					fclose(fd);
+				}
+				free(hex_pub);
+#if defined(_WIN64) && !defined(__CYGWIN__)
+				ReleaseMutex(write_keys);
+#else
+				pthread_mutex_unlock(&write_keys);
+#endif
+			}
+		}
+
+		// Check for distinguished point property (last byte is 0)
+		if(rmd160_hash[19] == 0) {
+			// In a full implementation, we would store this point and its path.
+			// For now, we just print it for debugging.
+			if(FLAGDEBUG) {
+				char *hex_pub = secp->GetPublicKeyHex(true, current_point);
+				printf("Distinguished point found: %s\n", hex_pub);
+				free(hex_pub);
+			}
+		}
+		steps[thread_number]++;
+	}
+
+	ends[thread_number] = 1; // This will never be reached in this simplified version
+	return NULL;
 }
